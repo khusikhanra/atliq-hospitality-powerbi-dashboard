@@ -15,7 +15,8 @@
 
 ## Dashboard Preview
 
-![AtliQ Hospitality Performance Analytics Dashboard](assets/dashboard_preview.png)
+<img width="1536" height="1024" alt="7 pages interactive dashboard screenshot" src="https://github.com/user-attachments/assets/4dbc2c82-fc56-42eb-881f-475fa98087d9" />
+
 
 ---
 
