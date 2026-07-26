@@ -190,5 +190,10 @@ AtliQ-Hospitality-Dashboard/
 Built by **Khusi Khanra** · [github.com/khusikhanra](https://github.com/khusikhanra)
 
 ---
+## Acknowledgements
+
+The dataset and business problem used in this project are based on the Codebasics Resume Project Challenge – Hospitality Domain. The dashboard design, data modeling, DAX measures, visualizations, and business analysis were independently developed by me.
+
+---
 
 *Power BI · DAX · Power Query · Data Modeling · Hospitality Analytics · Revenue Management · Hotel KPIs · RevPAR · ADR · Occupancy Analysis*
