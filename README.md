@@ -1,5 +1,3 @@
-# atliq-hospitality-powerbi-dashboard
-End-to-end Power BI dashboard for hospitality analytics featuring revenue, occupancy, bookings, ADR, RevPAR, cancellation analysis, and interactive business insights using DAX and data modeling.
 # AtliQ Hotels — Hospitality Performance Analytics Dashboard
 
 **End-to-end revenue intelligence across 25 properties, 4 cities, and 135K bookings · Built in Power BI**
