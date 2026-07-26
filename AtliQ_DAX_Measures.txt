@@ -1,0 +1,665 @@
+// ═══════════════════════════════════════════════════════════════════════
+// AtliQ Hotels Group — DAX Measures Library
+// Power BI Revenue Intelligence Dashboard
+// Period: May–July 2022 | 25 Properties | 4 Cities
+// ───────────────────────────────────────────────────────────────────────
+// HOW TO USE:
+// 1. Create a blank "Measures" table: Modeling → New Table → Measures = {0}
+// 2. Hide the "Measures" column from the report view
+// 3. Create each measure below inside that table
+// 4. Assign each measure to its Display Folder (Home → Properties panel)
+// 5. Set Format Strings as documented per measure
+// ═══════════════════════════════════════════════════════════════════════
+
+
+// ╔═══════════════════════════════════════════════════════╗
+// ║  📁 FOLDER: Revenue Metrics                          ║
+// ╚═══════════════════════════════════════════════════════╝
+
+// ── Measure 1 ───────────────────────────────────────────────────────────
+// Revenue | Folder: Revenue Metrics | Total realized revenue
+Revenue =
+SUM ( fact_bookings[revenue_realized] )
+// Format: "₹#,##0,,"" Cr"""
+// Note: revenue_realized already reflects 60% retention on cancellations.
+//       Do NOT re-apply the retention rule in DAX.
+
+
+// ── Measure 2 ───────────────────────────────────────────────────────────
+// Revenue Generated | Folder: Revenue Metrics | Gross revenue before deductions
+Revenue Generated =
+SUM ( fact_bookings[revenue_generated] )
+// Format: "₹#,##0,,"" Cr"""
+
+
+// ── Measure 3 ───────────────────────────────────────────────────────────
+// Revenue Loss | Folder: Revenue Metrics | INR value lost to cancellations
+Revenue Loss =
+VAR Generated = [Revenue Generated]
+VAR Realized  = [Revenue]
+RETURN Generated - Realized
+// Format: "₹#,##0,,"" Cr"""
+// Conditional Formatting: Always Red background — this is always a loss
+
+
+// ── Measure 4 ───────────────────────────────────────────────────────────
+// Realisation % | Folder: Revenue Metrics | Revenue retained vs. generated
+Realisation % =
+VAR Realized  = [Revenue]
+VAR Generated = [Revenue Generated]
+RETURN DIVIDE ( Realized, Generated, 0 )
+// Format: "0.0%"
+// Conditional: Green >88% | Amber 83–88% | Red <83%
+// Benchmark: Indian Luxury 88–93% | Global Midscale 85–90%
+// CONFIDENCE: High
+
+
+// ── Measure 5 ───────────────────────────────────────────────────────────
+// Revenue per Booking | Folder: Revenue Metrics | Avg revenue across all booking statuses
+Revenue per Booking =
+VAR TotalBookings = [Total Bookings]
+VAR TotalRevenue  = [Revenue]
+RETURN DIVIDE ( TotalRevenue, TotalBookings, 0 )
+// Format: "₹#,##0"
+// Note: Differs from ADR — ADR uses successful_bookings from fact_agg
+
+
+// ── Measure 6 ───────────────────────────────────────────────────────────
+// Weekend RevPAR | Folder: Revenue Metrics | RevPAR on weekend check-in dates
+Weekend RevPAR =
+VAR WeekendRevenue =
+    CALCULATE (
+        [Revenue],
+        Calendar[Day Type] = "Weekend"
+    )
+VAR WeekendCapacity =
+    CALCULATE (
+        [Total Capacity],
+        Calendar[Day Type] = "Weekend"
+    )
+RETURN DIVIDE ( WeekendRevenue, WeekendCapacity, 0 )
+// Format: "₹#,##0"
+// CONFIDENCE: High — requires Day Type = "Weekend" (title case, fixed typo)
+// Insight: Weekend occupancy 74.3% vs weekday 51.8% — but ADR is IDENTICAL.
+//          This measure will show the pricing opportunity gap.
+
+
+// ── Measure 7 ───────────────────────────────────────────────────────────
+// Weekday RevPAR | Folder: Revenue Metrics | RevPAR on weekday check-in dates
+Weekday RevPAR =
+VAR WeekdayRevenue =
+    CALCULATE (
+        [Revenue],
+        Calendar[Day Type] = "Weekday"
+    )
+VAR WeekdayCapacity =
+    CALCULATE (
+        [Total Capacity],
+        Calendar[Day Type] = "Weekday"
+    )
+RETURN DIVIDE ( WeekdayRevenue, WeekdayCapacity, 0 )
+// Format: "₹#,##0"
+
+
+// ── Measure 8 ───────────────────────────────────────────────────────────
+// Revenue Loss Excess vs Benchmark | Folder: Revenue Metrics
+// Estimated excess revenue lost beyond industry benchmark of 18% cancel rate
+Revenue Loss Excess vs Benchmark =
+VAR BenchmarkCancelRate = 0.18
+VAR ActualCancelRate    = [Cancellation Rate]
+VAR TotalRevGenerated   = [Revenue Generated]
+VAR AvgRevPerBooking    = DIVIDE ( TotalRevGenerated, [Total Bookings], 0 )
+VAR ExcessCancelPct     = ActualCancelRate - BenchmarkCancelRate
+VAR ExcessCancelledBk   = ExcessCancelPct * [Total Bookings]
+VAR EstExcessLoss       = ExcessCancelledBk * AvgRevPerBooking * 0.40
+RETURN IF ( ExcessCancelPct > 0, EstExcessLoss, 0 )
+// Format: "₹#,##0,,"" Cr"""
+// CONFIDENCE: Medium — proxy calculation using average revenue per booking
+
+
+// ╔═══════════════════════════════════════════════════════╗
+// ║  📁 FOLDER: Occupancy Metrics                        ║
+// ╚═══════════════════════════════════════════════════════╝
+
+// ── Measure 9 ───────────────────────────────────────────────────────────
+// Total Capacity | Folder: Occupancy Metrics | Sum of available room-nights
+Total Capacity =
+SUM ( fact_aggregated_bookings[capacity] )
+// Format: "#,##0"
+// IMPORTANT: Use fact_aggregated_bookings — this is the ONLY table with capacity.
+//            fact_bookings does NOT contain capacity data.
+// CONFIDENCE: High
+
+
+// ── Measure 10 ──────────────────────────────────────────────────────────
+// Total Successful Bookings | Folder: Occupancy Metrics | Rooms sold
+Total Successful Bookings =
+SUM ( fact_aggregated_bookings[successful_bookings] )
+// Format: "#,##0"
+
+
+// ── Measure 11 ──────────────────────────────────────────────────────────
+// Occupancy % | Folder: Occupancy Metrics | Rooms sold vs rooms available
+Occupancy % =
+VAR Sold      = [Total Successful Bookings]
+VAR Available = [Total Capacity]
+RETURN DIVIDE ( Sold, Available, 0 )
+// Format: "0.0%"
+// Conditional: Green >65% | Amber 55–65% | Red <55%
+// Benchmark: Indian Luxury 65–72% | AtliQ actual: 57.9% (below benchmark)
+// TRADE-OFF: Uses fact_aggregated_bookings (authoritative).
+//            Deriving from fact_bookings[booking_status] gives a slightly different
+//            result because the two tables capture occupancy at different grains.
+//            fact_agg is the authoritative occupancy source.
+// CONFIDENCE: High
+
+
+// ── Measure 12 ──────────────────────────────────────────────────────────
+// RevPAR | Folder: Occupancy Metrics | Revenue per available room-night
+RevPAR =
+VAR TotalRevenue  = [Revenue]
+VAR TotalCapacity = [Total Capacity]
+RETURN DIVIDE ( TotalRevenue, TotalCapacity, 0 )
+// Format: "₹#,##0"
+// Conditional: Green >₹9,000 | Amber ₹6,000–₹9,000 | Red <₹6,000
+// Portfolio value: ₹7,347 (just below ₹7,500 target)
+// CONFIDENCE: High — fact_agg capacity is the only valid RevPAR denominator
+
+
+// ── Measure 13 ──────────────────────────────────────────────────────────
+// ADR | Folder: Occupancy Metrics | Average Daily Rate
+ADR =
+VAR Revenue = [Revenue]
+VAR Sold    = [Total Successful Bookings]
+RETURN DIVIDE ( Revenue, Sold, 0 )
+// Format: "₹#,##0"
+// Portfolio value: ₹12,696
+// CONFIDENCE: High
+
+
+// ── Measure 14 ──────────────────────────────────────────────────────────
+// DSRN | Folder: Occupancy Metrics | Daily Sellable Room Nights
+DSRN =
+VAR TotalCapacity = [Total Capacity]
+VAR DaysInPeriod  = COUNTROWS ( Calendar )
+RETURN DIVIDE ( TotalCapacity, DaysInPeriod, 0 )
+// Format: "#,##0.0"
+// Portfolio value: 2,528 rooms/day
+// Note: DaysInPeriod uses COUNTROWS on Calendar — dynamically adjusts to
+//       any date filter applied by a slicer or visual interaction.
+// CONFIDENCE: High
+
+
+// ── Measure 15 ──────────────────────────────────────────────────────────
+// DBRN | Folder: Occupancy Metrics | Daily Booked Room Nights
+DBRN =
+VAR TotalBookings = [Total Bookings]
+VAR DaysInPeriod  = COUNTROWS ( Calendar )
+RETURN DIVIDE ( TotalBookings, DaysInPeriod, 0 )
+// Format: "#,##0.0"
+// Portfolio value: 1,463 rooms/day
+
+
+// ── Measure 16 ──────────────────────────────────────────────────────────
+// DURN | Folder: Occupancy Metrics | Daily Utilized Room Nights (checked out only)
+DURN =
+VAR CheckedOut   = [Checked Out Bookings]
+VAR DaysInPeriod = COUNTROWS ( Calendar )
+RETURN DIVIDE ( CheckedOut, DaysInPeriod, 0 )
+// Format: "#,##0.0"
+// Portfolio value: 1,026 rooms/day
+// Gap DSRN–DBRN = 1,065 rooms/day unsold
+// Gap DBRN–DURN = 437 rooms/day lost to no-show/cancel
+
+
+// ── Measure 17 ──────────────────────────────────────────────────────────
+// Brand Efficiency Index | Folder: Occupancy Metrics | Property RevPAR vs portfolio
+Brand Efficiency Index =
+VAR PropertyRevPAR  = [RevPAR]
+VAR PortfolioRevPAR = CALCULATE ( [RevPAR], ALL ( dim_hotels ) )
+RETURN DIVIDE ( PropertyRevPAR, PortfolioRevPAR, 0 )
+// Format: "0.00"" x"""
+// Conditional: Green >1.10 | Amber 0.90–1.10 | Red <0.90
+// CONFIDENCE: Medium — ALL(dim_hotels) removes property/city/category filters
+//             but retains date and room filters
+
+
+// ╔═══════════════════════════════════════════════════════╗
+// ║  📁 FOLDER: Booking Metrics                          ║
+// ╚═══════════════════════════════════════════════════════╝
+
+// ── Measure 18 ──────────────────────────────────────────────────────────
+// Total Bookings | Folder: Booking Metrics | Count of all bookings
+Total Bookings =
+COUNTROWS ( fact_bookings )
+// Format: "#,##0"
+// Portfolio value: 134,590
+// Note: Use COUNTROWS — do NOT use COUNT(booking_id) since booking_id
+//       is excluded from the model to reduce cardinality.
+
+
+// ── Measure 19 ──────────────────────────────────────────────────────────
+// Cancelled Bookings | Folder: Booking Metrics | Count of Cancelled status
+Cancelled Bookings =
+CALCULATE (
+    COUNTROWS ( fact_bookings ),
+    fact_bookings[booking_status] = "Cancelled"
+)
+// Format: "#,##0"
+// Portfolio value: 33,420
+
+
+// ── Measure 20 ──────────────────────────────────────────────────────────
+// Cancellation Rate | Folder: Booking Metrics | Cancelled / Total Bookings
+Cancellation Rate =
+VAR Cancelled = [Cancelled Bookings]
+VAR Total     = [Total Bookings]
+RETURN DIVIDE ( Cancelled, Total, 0 )
+// Format: "0.0%"
+// Conditional: Green <15% | Amber 15–20% | Red >20%
+// Portfolio value: 24.8% — ELEVATED vs 15–20% Indian benchmark
+// CONFIDENCE: High
+
+
+// ── Measure 21 ──────────────────────────────────────────────────────────
+// No Show Bookings | Folder: Booking Metrics | Count of No Show status
+No Show Bookings =
+CALCULATE (
+    COUNTROWS ( fact_bookings ),
+    fact_bookings[booking_status] = "No Show"
+)
+// Format: "#,##0"
+// Portfolio value: 6,759 (5.0%)
+// Revenue impact: No Shows retain 100% of revenue_generated
+
+
+// ── Measure 22 ──────────────────────────────────────────────────────────
+// No Show Rate | Folder: Booking Metrics | No Shows / Total Bookings
+No Show Rate =
+DIVIDE ( [No Show Bookings], [Total Bookings], 0 )
+// Format: "0.0%"
+// Portfolio value: 5.0%
+
+
+// ── Measure 23 ──────────────────────────────────────────────────────────
+// Checked Out Bookings | Folder: Booking Metrics | Successfully completed stays
+Checked Out Bookings =
+CALCULATE (
+    COUNTROWS ( fact_bookings ),
+    fact_bookings[booking_status] = "Checked Out"
+)
+// Format: "#,##0"
+// Portfolio value: 94,411 (70.1%)
+
+
+// ── Measure 24 ──────────────────────────────────────────────────────────
+// Avg Booking Lead Time | Folder: Booking Metrics | Days between booking and check-in
+Avg Booking Lead Time =
+AVERAGEX (
+    FILTER (
+        fact_bookings,
+        NOT ISBLANK ( fact_bookings[booking_date] )
+            && NOT ISBLANK ( fact_bookings[check_in_date] )
+            && DATEDIFF (
+                fact_bookings[booking_date],
+                fact_bookings[check_in_date],
+                DAY
+            ) >= 0
+    ),
+    DATEDIFF ( fact_bookings[booking_date], fact_bookings[check_in_date], DAY )
+)
+// Format: "0.0"" days"""
+// Note: Filter excludes negative lead times (walk-in same-day bookings)
+// CONFIDENCE: Medium
+
+
+// ── Measure 25 ──────────────────────────────────────────────────────────
+// Solo Premium Guest Count | Folder: Booking Metrics | Upsell signal
+Solo Premium Guest Count =
+CALCULATE (
+    COUNTROWS ( fact_bookings ),
+    fact_bookings[no_guests] = 1,
+    fact_bookings[room_category] IN { "RT3", "RT4" }
+)
+// Format: "#,##0"
+// Portfolio value: 14,423 (10.7% of all bookings)
+// Business insight: Solo guests in Premium/Presidential rooms = prime upsell candidates
+
+
+// ── Measure 26 ──────────────────────────────────────────────────────────
+// Bookings by Booking Date | Folder: Booking Metrics | Uses INACTIVE relationship
+Bookings by Booking Date =
+CALCULATE (
+    [Total Bookings],
+    USERELATIONSHIP ( fact_bookings[booking_date], Calendar[Date] )
+)
+// Format: "#,##0"
+// USERELATIONSHIP required because fact_bookings → Calendar active relationship
+//   is on check_in_date. This measure activates the booking_date relationship.
+// Use in: lead time analysis, booking curve charts
+// CONFIDENCE: High — standard USERELATIONSHIP pattern
+
+
+// ╔═══════════════════════════════════════════════════════╗
+// ║  📁 FOLDER: Rating & Experience                      ║
+// ╚═══════════════════════════════════════════════════════╝
+
+// ── Measure 27 ──────────────────────────────────────────────────────────
+// Avg Rating | Folder: Rating & Experience | Average guest rating (nulls excluded)
+Avg Rating =
+VAR RatedRows =
+    FILTER (
+        fact_bookings,
+        NOT ISBLANK ( fact_bookings[ratings_given] )
+    )
+RETURN AVERAGEX ( RatedRows, fact_bookings[ratings_given] )
+// Format: "0.00"
+// Conditional: Green >4.0 | Amber 3.5–4.0 | Red <3.5
+// Portfolio value: 3.62 — BELOW 3.8 global midscale benchmark
+// CRITICAL: Only 42.1% of bookings have a rating. All rating visuals MUST
+//           display a "42% coverage" disclaimer.
+// TRADE-OFF: AVERAGEX with FILTER vs. CALCULATE(AVERAGE(), NOT ISBLANK())
+//            Both yield identical results. AVERAGEX is more explicit and
+//            safer when filter context propagates through complex relationships.
+// CONFIDENCE: High
+
+
+// ── Measure 28 ──────────────────────────────────────────────────────────
+// Rated Bookings | Folder: Rating & Experience | Count of bookings with a rating
+Rated Bookings =
+CALCULATE (
+    COUNTROWS ( fact_bookings ),
+    NOT ISBLANK ( fact_bookings[ratings_given] )
+)
+// Format: "#,##0"
+// Portfolio value: 56,683
+
+
+// ── Measure 29 ──────────────────────────────────────────────────────────
+// Rating Coverage % | Folder: Rating & Experience | Share of bookings with rating
+Rating Coverage % =
+DIVIDE ( [Rated Bookings], [Total Bookings], 0 )
+// Format: "0.0%"
+// Portfolio value: 42.1% — data quality KPI; target 70%+
+// Must appear in tooltip on every rating visual
+
+
+// ── Measure 30 ──────────────────────────────────────────────────────────
+// Properties Below 3.5 Rating | Folder: Rating & Experience | Risk count
+Properties Below 3.5 Rating =
+COUNTROWS (
+    FILTER (
+        VALUES ( dim_hotels[property_id] ),
+        [Avg Rating] < 3.5
+    )
+)
+// Format: "#,##0"
+// Conditional: Red if > 0
+// Portfolio value: 3 (Atliq Exotica Hyderabad 2.33, Atliq Bay Mumbai 2.36,
+//                    Atliq Grands Bangalore 2.36)
+// CONFIDENCE: Medium — result depends on having sufficient rated bookings
+//             per property for the average to be meaningful
+
+
+// ╔═══════════════════════════════════════════════════════╗
+// ║  📁 FOLDER: Time Intelligence                        ║
+// ╚═══════════════════════════════════════════════════════╝
+// PREREQUISITE: All measures in this folder require the Calendar table
+//               to span Jan 1 – Dec 31, 2022, marked as a Date Table.
+//               Using the original dim_date (May–Jul only) will cause
+//               TOTALYTD and DATEADD to return incorrect or BLANK results.
+
+// ── Measure 31 ──────────────────────────────────────────────────────────
+// Revenue MTD | Folder: Time Intelligence | Month-to-date cumulative revenue
+Revenue MTD =
+CALCULATE (
+    [Revenue],
+    DATESMTD ( Calendar[Date] )
+)
+// Format: "₹#,##0,,"" Cr"""
+// CONFIDENCE: High — requires full Jan–Dec Calendar table
+
+
+// ── Measure 32 ──────────────────────────────────────────────────────────
+// Revenue Prior Week | Folder: Time Intelligence | Revenue 7 days prior
+Revenue Prior Week =
+CALCULATE (
+    [Revenue],
+    DATEADD ( Calendar[Date], -7, DAY )
+)
+// Format: "₹#,##0,,"" Cr"""
+// CONFIDENCE: Medium — behaves correctly when a weekly slicer is active;
+//             may be unintuitive with non-contiguous date filters
+
+
+// ── Measure 33 ──────────────────────────────────────────────────────────
+// Revenue WoW Change % | Folder: Time Intelligence | Week-over-week % change
+Revenue WoW Change % =
+VAR CurrentRevenue = [Revenue]
+VAR PriorRevenue   = [Revenue Prior Week]
+RETURN DIVIDE ( CurrentRevenue - PriorRevenue, PriorRevenue, 0 )
+// Format: "+0.0%;-0.0%;0.0%"
+// Conditional: Green >0% | Red <0%
+// Use ISINSCOPE(Calendar[Week Number]) guard for page-level cards:
+//   IF ( ISINSCOPE(Calendar[Week Number]), [calculation], BLANK() )
+// CONFIDENCE: Medium
+
+
+// ── Measure 34 ──────────────────────────────────────────────────────────
+// Weeks in Period | Folder: Time Intelligence | Distinct week count in filter
+Weeks in Period =
+DISTINCTCOUNT ( Calendar[Week Number] )
+// Format: "#,##0"
+// Portfolio value (full period): 14
+
+
+// ╔═══════════════════════════════════════════════════════╗
+// ║  📁 FOLDER: Comparative & Ranking                    ║
+// ╚═══════════════════════════════════════════════════════╝
+
+// ── Measure 35 ──────────────────────────────────────────────────────────
+// Property RevPAR Rank | Folder: Comparative & Ranking | Dense rank by RevPAR
+Property RevPAR Rank =
+RANKX (
+    ALL ( dim_hotels[property_id] ),
+    [RevPAR],
+    ,
+    DESC,
+    DENSE
+)
+// Format: "#,##0"
+// Use: Property Scorecard table — shows rank 1–25 for each property
+// CONFIDENCE: High
+
+
+// ── Measure 36 ──────────────────────────────────────────────────────────
+// RevPAR vs Portfolio Avg | Folder: Comparative & Ranking | Absolute gap
+RevPAR vs Portfolio Avg =
+VAR PropertyRevPAR  = [RevPAR]
+VAR PortfolioRevPAR = CALCULATE ( [RevPAR], ALL ( dim_hotels ) )
+RETURN PropertyRevPAR - PortfolioRevPAR
+// Format: "₹+#,##0;₹-#,##0;₹0"
+// Conditional: Green >0 (above avg) | Red <0 (below avg)
+
+
+// ── Measure 37 ──────────────────────────────────────────────────────────
+// Cancellation Rate vs Portfolio | Folder: Comparative & Ranking | Relative gap
+Cancellation Rate vs Portfolio =
+VAR PropertyCancelRate  = [Cancellation Rate]
+VAR PortfolioCancelRate = CALCULATE ( [Cancellation Rate], ALL ( dim_hotels ) )
+RETURN PropertyCancelRate - PortfolioCancelRate
+// Format: "+0.0%;-0.0%;0.0%"
+// Conditional: Green <0% (lower cancel = better) | Red >0% (higher = worse)
+
+
+// ── Measure 38 ──────────────────────────────────────────────────────────
+// Platform Realisation % | Folder: Comparative & Ranking | Reuse of Realisation %
+// (This is identical to Realisation % — it produces platform-level results
+//  automatically when used in a visual broken down by booking_platform)
+Platform Realisation % =
+DIVIDE ( [Revenue], [Revenue Generated], 0 )
+// Format: "0.0%"
+// Note: Not a separate calculation — the filter context from the visual does
+//       the work. Documented separately for folder/discoverability purposes.
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// CALENDAR TABLE DAX (paste into Modeling → New Table)
+// ═══════════════════════════════════════════════════════════════════════
+
+Calendar =
+VAR StartDate = DATE ( 2022, 1, 1 )
+VAR EndDate   = DATE ( 2022, 12, 31 )
+VAR BaseTable = CALENDAR ( StartDate, EndDate )
+RETURN
+    ADDCOLUMNS (
+        BaseTable,
+        "Year",            YEAR ( [Date] ),
+        "Month Number",    MONTH ( [Date] ),
+        "Month Name",      FORMAT ( [Date], "MMM" ),
+        "MMM YY",          FORMAT ( [Date], "MMM YY" ),
+        "Month Sort",      YEAR ( [Date] ) * 100 + MONTH ( [Date] ),
+        "Week Number",     WEEKNUM ( [Date], 2 ),
+        "Week Label",      "W " & FORMAT ( WEEKNUM ( [Date], 2 ), "00" ),
+        "Day Name",        FORMAT ( [Date], "DDD" ),
+        "Day Type",        IF ( WEEKDAY ( [Date], 2 ) >= 6, "Weekend", "Weekday" ),
+        "Quarter",         "Q" & QUARTER ( [Date] ),
+        "Is Data Period",  [Date] >= DATE ( 2022, 5, 1 ) && [Date] <= DATE ( 2022, 7, 31 )
+    )
+
+// After creating the Calendar table:
+// 1. Go to Modeling → Mark as Date Table → select the [Date] column
+// 2. Set Sort By Column: Month Name → Month Sort
+// 3. Set Sort By Column: MMM YY → Month Sort
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// RELATIONSHIP SETUP (set in Model View)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// ACTIVE RELATIONSHIPS:
+//   fact_bookings[check_in_date]              → Calendar[Date]       (Many:1, Single)
+//   fact_aggregated_bookings[check_in_date]   → Calendar[Date]       (Many:1, Single)
+//   fact_bookings[property_id]                → dim_hotels[property_id] (Many:1, Single)
+//   fact_aggregated_bookings[property_id]     → dim_hotels[property_id] (Many:1, Single)
+//   fact_bookings[room_category]              → dim_rooms[room_id]   (Many:1, Single)
+//   fact_aggregated_bookings[room_category]   → dim_rooms[room_id]   (Many:1, Single)
+//
+// INACTIVE RELATIONSHIPS (use USERELATIONSHIP in measures):
+//   fact_bookings[booking_date]               → Calendar[Date]       (Many:1, Single)
+//   fact_bookings[checkout_date]              → Calendar[Date]       (Many:1, Single)
+//
+// CROSS-FILTER DIRECTION: All relationships use Single direction.
+//   Do NOT set bidirectional cross-filtering — it causes ambiguous filter paths
+//   with two fact tables sharing dimension tables.
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// POWER QUERY M — DATA TRANSFORMATIONS
+// ═══════════════════════════════════════════════════════════════════════
+
+// --- dim_date (REPLACE with Calendar DAX table above — do not load dim_date) ---
+// The original dim_date table should NOT be loaded to the model.
+// The Calendar DAX table above replaces it with a full 365-day calendar.
+// Reason: dim_date covers only May–July 2022; TOTALYTD and DATEADD require
+//         a contiguous full-year calendar starting Jan 1.
+
+// --- fact_bookings: Power Query steps ---
+// Step 1: Fix date columns (explicit parse to avoid locale issues)
+//   = Table.TransformColumnTypes(Source, {
+//       {"booking_date",    type date},
+//       {"check_in_date",   type date},
+//       {"checkout_date",   type date}
+//     }, "en-IN")
+//
+// Step 2: Rename checkout_date column for consistency
+//   = Table.RenameColumns(#"Changed Types", {{"checkout_date", "check_out_date"}})
+//
+// Step 3: Remove booking_id column (high cardinality — never used raw)
+//   = Table.RemoveColumns(#"Renamed Columns", {"booking_id"})
+//   NOTE: Use COUNTROWS(fact_bookings) in DAX instead of COUNT(booking_id)
+//
+// Step 4: Set data types
+//   revenue_realized    → Int64
+//   revenue_generated   → Int64
+//   no_guests           → Int64
+//   ratings_given       → Decimal Number (leave nulls as-is)
+//   property_id         → Int64
+//   room_category       → Text
+//   booking_platform    → Text
+//   booking_status      → Text
+
+// --- fact_aggregated_bookings: Power Query steps ---
+// Step 1: Fix check_in_date
+//   = Table.TransformColumnTypes(Source, {{"check_in_date", type date}}, "en-IN")
+// Step 2: Set data types
+//   property_id         → Int64
+//   capacity            → Int64
+//   successful_bookings → Int64
+//   room_category       → Text
+
+// --- dim_hotels: Power Query steps ---
+// No transformations needed. Confirm:
+//   property_id         → Int64
+//   property_name       → Text
+//   category            → Text
+//   city                → Text
+
+// --- dim_rooms: Power Query steps ---
+// No transformations needed. Confirm:
+//   room_id             → Text (RT1/RT2/RT3/RT4)
+//   room_class          → Text
+
+// ═══════════════════════════════════════════════════════════════════════
+// ROW-LEVEL SECURITY (RLS) — set in Modeling → Manage Roles
+// ═══════════════════════════════════════════════════════════════════════
+
+// Role: City Manager
+// Table: dim_hotels
+// DAX Filter:
+//   [city] = LOOKUPVALUE(user_city_map[city], user_city_map[email], USERPRINCIPALNAME())
+// Note: Create a user_city_map table: email | city
+//   If only one city per manager, simplify to: [city] = "Delhi" (hardcode per role)
+
+// Role: Regional Director
+// Table: dim_hotels
+// DAX Filter (example — North region: Delhi):
+//   [city] IN { "Delhi" }
+// (Create one role per region; assign users in Power BI Service)
+
+// Role: C-Suite / Portfolio View
+// Table: dim_hotels
+// DAX Filter: (empty — no filter; sees all 25 properties)
+
+// ═══════════════════════════════════════════════════════════════════════
+// DISPLAY FOLDER ASSIGNMENTS
+// ═══════════════════════════════════════════════════════════════════════
+// In Power BI Desktop, select each measure → Properties panel → Display Folder:
+//
+// Revenue Metrics:
+//   Revenue, Revenue Generated, Revenue Loss, Realisation %, Revenue per Booking,
+//   Weekend RevPAR, Weekday RevPAR, Revenue Loss Excess vs Benchmark
+//
+// Occupancy Metrics:
+//   Total Capacity, Total Successful Bookings, Occupancy %, RevPAR, ADR,
+//   DSRN, DBRN, DURN, Brand Efficiency Index
+//
+// Booking Metrics:
+//   Total Bookings, Cancelled Bookings, Cancellation Rate, No Show Bookings,
+//   No Show Rate, Checked Out Bookings, Avg Booking Lead Time,
+//   Solo Premium Guest Count, Bookings by Booking Date
+//
+// Rating & Experience:
+//   Avg Rating, Rated Bookings, Rating Coverage %, Properties Below 3.5 Rating
+//
+// Time Intelligence:
+//   Revenue MTD, Revenue Prior Week, Revenue WoW Change %, Weeks in Period
+//
+// Comparative & Ranking:
+//   Property RevPAR Rank, RevPAR vs Portfolio Avg,
+//   Cancellation Rate vs Portfolio, Platform Realisation %
+
+// ═══════════════════════════════════════════════════════════════════════
+// END OF DAX MEASURES LIBRARY
+// Total measures: 38 | Folders: 6 | Ready for Power BI Desktop import
+// ═══════════════════════════════════════════════════════════════════════
